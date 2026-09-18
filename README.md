@@ -128,6 +128,8 @@ on property:sys.boot_completed=1
     write /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor performance
     write /sys/block/mmcblk0/queue/read_ahead_kb 512
     setprop pm.dexopt.bg-dexopt speed
+    setprop pm.dexopt.install speed
+    setprop pm.dexopt.inactive speed
 ```
 
 Что это даёт:
@@ -139,7 +141,9 @@ on property:sys.boot_completed=1
 | `stop xiriservice` | голосовой ассистент iFlytek, стучится в `openspeech.cn` |
 | governor `performance` | CPU всегда на 1 ГГц вместо 800/1000 по нагрузке — интерфейс отзывчивее, для проектора от сети нагрев не критичен |
 | `read_ahead_kb 512` | eMMC читает крупнее — быстрее холодный старт приложений |
-| `pm.dexopt.bg-dexopt speed` | обновлённые приложения докомпилируются ночью в `speed` (см. шаг 5) |
+| `pm.dexopt.install speed` | новые и обновлённые приложения компилируются в `speed` сразу при установке (по умолчанию `speed-profile`, что без профиля = JIT). Установка на 20–60 с дольше, зато приложение быстрое с первого запуска |
+| `pm.dexopt.bg-dexopt speed` | страховка: фоновая докомпиляция (раз в сутки при простое) тоже в `speed` |
+| `pm.dexopt.inactive speed` | приложения, не открывавшиеся 10 дней, не понижаются обратно до `verify` (штатная экономия места, тут не нужна) |
 
 Применить то же самое прямо сейчас, не дожидаясь перезагрузки:
 
@@ -147,7 +151,7 @@ on property:sys.boot_completed=1
 adb shell "stop boa; stop perfprofd; stop xiriservice"
 adb shell "echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
 adb shell "echo 512 > /sys/block/mmcblk0/queue/read_ahead_kb"
-adb shell setprop pm.dexopt.bg-dexopt speed
+adb shell "setprop pm.dexopt.install speed; setprop pm.dexopt.bg-dexopt speed; setprop pm.dexopt.inactive speed"
 adb shell service call bluetooth_manager 8        # выключить BT сразу
 adb shell setprop persist.log.tag S               # заглушить логи приложений (logd ел 3 % CPU)
 adb shell pm trim-caches 9999G
@@ -180,7 +184,9 @@ foreach ($p in "com.spocky.projengmenu","ru.kinopoisk.tv","ru.rutube.app.tv","ru
 }
 ```
 
-Если у пакета `run-from-apk` — повторить компиляцию для него одного. После обновления приложения из магазина оно снова становится JIT, пока ночью не отработает `bg-dexopt` (шаг 4); можно не ждать и запустить команду для пакета вручную.
+Если у пакета `run-from-apk` — повторить компиляцию для него одного.
+
+Этот массовый прогон нужен один раз — для уже установленных приложений. Всё, что ставится или обновляется **после** шага 4, компилируется в `speed` само, прямо при установке (`pm.dexopt.install`). Проверить: `adb shell getprop pm.dexopt.install` → `speed`.
 
 ## Шаг 6. Переключатель разрешения UI (`local.uires`)
 
@@ -216,6 +222,7 @@ adb reboot
 ```powershell
 adb connect <IP>:5555
 adb shell getprop init.svc.boa                                              # stopped
+adb shell getprop pm.dexopt.install                                         # speed
 adb shell cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor        # performance
 adb shell cat /sys/block/mmcblk0/queue/read_ahead_kb                        # 512
 adb shell settings get global bluetooth_on                                  # 0
