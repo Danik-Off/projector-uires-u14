@@ -1,9 +1,25 @@
-# Custom optimization (added 2026-09-18). To revert: delete this file and reboot.
+# Custom optimization (added 2026-09-18). To revert: delete this file and zz_optimize.sh, reboot.
+
+# Read by zygote at start: bigger per-app heap before GC pressure (2 GB RAM, default 128m).
+# Must come after init.rc's "on post-fs: load_system_props" (reloads build.prop) and before zygote-start.
+on post-fs-data
+    setprop dalvik.vm.heapgrowthlimit 192m
+
+# Wi-Fi power save off + background app killer, see zz_optimize.sh
+service zz_optimize /system/bin/sh /vendor/etc/zz_optimize.sh
+    user root
+    group root
+    seclabel u:r:su:s0
+    disabled
+    oneshot
+
 on property:sys.boot_completed=1
     # Debug/telemetry daemons not needed on a home projector
     stop boa
     stop perfprofd
     stop xiriservice
+    # IO statistics collector for bugreports (0.6% CPU, constant page faults)
+    stop storaged
     # CPU: hold max clock, no ramp-up latency (2-step 800/1000 MHz)
     write /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor performance
     # eMMC: larger readahead for faster app loading
@@ -14,3 +30,4 @@ on property:sys.boot_completed=1
     setprop pm.dexopt.install speed
     # Don't downgrade apps unused for 10+ days back to verify (storage is not a concern)
     setprop pm.dexopt.inactive speed
+    start zz_optimize
